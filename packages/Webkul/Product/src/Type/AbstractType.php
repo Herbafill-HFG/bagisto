@@ -11,6 +11,7 @@ use Webkul\Product\Repositories\ProductRepository;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Product\Datatypes\CartItemValidationResult;
 use Webkul\Product\Repositories\ProductImageRepository;
+use Webkul\Product\Repositories\ProductVideoRepository;
 use Webkul\Product\Repositories\ProductInventoryRepository;
 use Webkul\Product\Repositories\ProductAttributeValueRepository;
 
@@ -47,9 +48,16 @@ abstract class AbstractType
     /**
      * ProductImageRepository instance
      *
-     * @var \Webkul\Product\Repositories\ProductInventoryRepository
+     * @var \Webkul\Product\Repositories\productImageRepository
      */
     protected $productImageRepository;
+
+    /**
+     * ProductVideoRepository instance
+     *
+     * @var \Webkul\Product\Repositories\productVideoRepository
+     */
+    protected $productVideoRepository;
 
     /**
      * Product Image helper instance
@@ -141,6 +149,7 @@ abstract class AbstractType
      * @param \Webkul\Product\Repositories\ProductInventoryRepository      $productInventoryRepository
      * @param \Webkul\Product\Repositories\ProductImageRepository          $productImageRepository
      * @param \Webkul\Product\Helpers\ProductImage                         $productImageHelper
+     * @param \Webkul\Product\Repositories\ProductVideoRepository          $productVideoRepository
      *
      * @return void
      */
@@ -150,7 +159,8 @@ abstract class AbstractType
         ProductAttributeValueRepository $attributeValueRepository,
         ProductInventoryRepository $productInventoryRepository,
         ProductImageRepository $productImageRepository,
-        ProductImage $productImageHelper
+        ProductImage $productImageHelper,
+        ProductVideoRepository $productVideoRepository
     ) {
         $this->attributeRepository = $attributeRepository;
 
@@ -163,6 +173,8 @@ abstract class AbstractType
         $this->productImageRepository = $productImageRepository;
 
         $this->productImageHelper = $productImageHelper;
+
+        $this->productVideoRepository = $productVideoRepository;
     }
 
     /**
@@ -270,6 +282,8 @@ abstract class AbstractType
             $this->productInventoryRepository->saveInventories($data, $product);
 
             $this->productImageRepository->uploadImages($data, $product);
+
+            $this->productVideoRepository->uploadVideos($data, $product);
 
             app('Webkul\Product\Repositories\ProductCustomerGroupPriceRepository')->saveCustomerGroupPrices($data,
                 $product);
@@ -659,16 +673,22 @@ abstract class AbstractType
                 continue;
             }
 
-            if ($price->value < $lastPrice) {
-                if ($price->value_type == 'discount') {
+            if ($price->value_type == 'discount') {
+                if ($price->value >= 0 && $price->value <= 100) {
                     $lastPrice = $product->price - ($product->price * $price->value) / 100;
-                } else {
-                    $lastPrice = $price->value;
+
+                    $lastQty = $price->qty;
+
+                    $lastCustomerGroupId = $price->customer_group_id;
                 }
+            } else {
+                if ($price->value >= 0 && $price->value < $lastPrice) {
+                    $lastPrice = $price->value;
 
-                $lastQty = $price->qty;
+                    $lastQty = $price->qty;
 
-                $lastCustomerGroupId = $price->customer_group_id;
+                    $lastCustomerGroupId = $price->customer_group_id;
+                }
             }
         }
 
@@ -904,4 +924,72 @@ abstract class AbstractType
         return false;
     }
 
+    /**
+     * Get more offers for customer group pricing.
+     *
+     * @return array
+     */
+    public function getCustomerGroupPricingOffers() {
+        $offerLines = [];
+        $haveOffers = true;
+        $customerGroupId = null;
+
+        if (Cart::getCurrentCustomer()->check()) {
+            $customerGroupId = Cart::getCurrentCustomer()->user()->customer_group_id;
+        } else {
+            $customerGroupRepository = app('Webkul\Customer\Repositories\CustomerGroupRepository');
+
+            if ($customerGuestGroup = $customerGroupRepository->findOneByField('code', 'guest')) {
+                $customerGroupId = $customerGuestGroup->id;
+            }
+        }
+
+        $customerGroupPrices = $this->product->customer_group_prices()->where(function ($query) use ($customerGroupId) {
+            $query->where('customer_group_id', $customerGroupId)
+                ->orWhereNull('customer_group_id');
+        }
+        )->groupBy('qty')->get()->sortBy('qty')->values()->all();
+
+        if ($this->haveSpecialPrice()) {
+            $rulePrice = app('Webkul\CatalogRule\Helpers\CatalogRuleProductPrice')->getRulePrice($this->product);
+
+            if ($rulePrice && $rulePrice->price < $this->product->special_price) {
+                $haveOffers = false;
+            }
+
+            if ($haveOffers) {
+                foreach ($customerGroupPrices as $key => $customerGroupPrice) {
+                    if ($customerGroupPrice && $customerGroupPrice->qty > 1) {
+                        array_push($offerLines, $this->getOfferLines($customerGroupPrice));
+                    }
+                }
+            }
+        } else {
+            if (count($customerGroupPrices) > 0) {
+                foreach ($customerGroupPrices as $key => $customerGroupPrice) {
+                    array_push($offerLines, $this->getOfferLines($customerGroupPrice));
+                }
+            }
+        }
+
+        return $offerLines;
+    }
+
+    /**
+     * Get offers lines.
+     *
+     * @param array $customerGroupPrice
+     *
+     * @return array
+     */
+    public function getOfferLines($customerGroupPrice) {
+        $price = $this->getCustomerGroupPrice($this->product, $customerGroupPrice->qty);
+
+        $discount = number_format((($this->product->price - $price) * 100) / ($this->product->price), 2);
+
+        $offerLines = trans('shop::app.products.offers', ['qty'  => $customerGroupPrice->qty,
+            'price' =>  core()->currency($price), 'discount' => $discount]);
+
+        return $offerLines;
+    }
 }

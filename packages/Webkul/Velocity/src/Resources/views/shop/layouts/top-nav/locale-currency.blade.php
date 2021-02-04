@@ -25,7 +25,7 @@
 @endphp
 
 {!! view_render_event('bagisto.shop.layout.header.locale.before') !!}
-    <div class="pull-left">
+    <div class="d-inline-block">
         <div class="dropdown">
             @php
                 $localeImage = null;
@@ -41,9 +41,9 @@
 
             <div class="locale-icon">
                 @if ($localeImage)
-                    <img src="{{ asset('/storage/' . $localeImage) }}" onerror="this.src = '{{ asset($localeImage) }}'" alt="" />
+                    <img src="{{ asset('/storage/' . $localeImage) }}" onerror="this.src = '{{ asset($localeImage) }}'" alt="" width="20" height="20" />
                 @elseif (app()->getLocale() == 'en')
-                    <img src="{{ asset('/themes/velocity/assets/images/flags/en.png') }}" alt="" />
+                    <img src="{{ asset('/themes/velocity/assets/images/flags/en.png') }}" alt="" width="20" height="20" />
                 @endif
             </div>
 
@@ -79,7 +79,7 @@
 {!! view_render_event('bagisto.shop.layout.header.currency-item.before') !!}
 
     @if (core()->getCurrentChannel()->currencies->count() > 1)
-        <div class="pull-left">
+        <div class="d-inline-block">
             <div class="dropdown">
                <select
                     class="btn btn-link dropdown-toggle control locale-switcher styled-select"

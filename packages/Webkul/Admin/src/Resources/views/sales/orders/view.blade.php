@@ -25,7 +25,7 @@
             <div class="page-action">
                 {!! view_render_event('sales.order.page_action.before', ['order' => $order]) !!}
 
-                @if ($order->canCancel())
+                @if ($order->canCancel() && bouncer()->hasPermission('sales.orders.cancel'))
                     <a href="{{ route('admin.sales.orders.cancel', $order->id) }}" class="btn btn-lg btn-primary" v-alert:message="'{{ __('admin::app.sales.orders.cancel-confirm-msg') }}'">
                         {{ __('admin::app.sales.orders.cancel-btn-title') }}
                     </a>
@@ -454,8 +454,14 @@
 
                                         <tr class="bold">
                                             <td>{{ __('admin::app.sales.orders.total-due') }}</td>
+
                                             <td>-</td>
-                                            <td>{{ core()->formatBasePrice($order->base_total_due) }}</td>
+
+                                            @if($order->status !== 'canceled')
+                                                <td>{{ core()->formatBasePrice($order->base_total_due) }}</td>
+                                            @else
+                                                <td id="due-amount-on-cancelled">{{ core()->formatBasePrice(0.00) }}</td>
+                                            @endif
                                         </tr>
                                     </table>
                                 </div>
